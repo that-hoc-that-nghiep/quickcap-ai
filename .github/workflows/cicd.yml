@@ -1,0 +1,60 @@
+name: CI/CD for NestJS Application
+
+on:
+    push:
+        branches:
+            - master
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+
+        services:
+            docker:
+                image: docker:20.10.7
+                options: --privileged
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v2
+
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v1
+
+            - name: Build Docker Image
+              run: |
+                  docker build --target production -t ${{ vars.SERVICE_NAME }}:latest .
+
+            - name: Log in to Docker Hub
+              uses: docker/login-action@v1
+              with:
+                  username: ${{ secrets.DOCKER_USERNAME }}
+                  password: ${{ secrets.DOCKER_PASSWORD }}
+
+            - name: Push Docker Image
+              run: |
+                  docker tag ${{ vars.SERVICE_NAME }}:latest ${{ secrets.DOCKER_USERNAME }}/${{ vars.SERVICE_NAME }}:latest
+                  docker push ${{ secrets.DOCKER_USERNAME }}/${{ vars.SERVICE_NAME }}:latest
+
+            - name: Add SSH key
+              uses: webfactory/ssh-agent@v0.5.3
+              with:
+                  ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+            - name: Deploy to Server
+              env:
+                  HOST: ${{ secrets.AWS_EC2_HOST }} # Your EC2 instance's public IP or hostname
+                  USER: ${{ secrets.AWS_EC2_USER }} # SSH user on your EC2 instance
+                  ENV_CONTENT: ${{ secrets.ENV }}
+              run: |
+                  ssh -o StrictHostKeyChecking=no $USER@$HOST << 'EOF'
+                    sudo docker pull ${{ secrets.DOCKER_USERNAME }}/${{ vars.SERVICE_NAME }}:latest
+
+                    sudo docker stop ${{ vars.SERVICE_NAME }} || true
+                    sudo docker rm ${{ vars.SERVICE_NAME }} || true
+                    sudo docker system prune -f
+
+                    sudo docker run -d --name ${{ vars.SERVICE_NAME }} \
+                      --env-file ~/.env \
+                      -p ${{ vars.SERVICE_PORT }}:${{ vars.SERVICE_PORT }} ${{ secrets.DOCKER_USERNAME }}/${{ vars.SERVICE_NAME }}:latest
+                  EOF
