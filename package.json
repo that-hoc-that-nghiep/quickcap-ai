@@ -25,11 +25,19 @@
     "dependencies": {
         "@langchain/core": "^0.3.42",
         "@nestjs/common": "^11.0.1",
+        "@nestjs/config": "^4.0.1",
         "@nestjs/core": "^11.0.1",
         "@nestjs/platform-express": "^11.0.1",
+        "@nestjs/swagger": "^11.0.6",
+        "class-transformer": "^0.5.1",
+        "class-validator": "^0.14.1",
+        "joi": "^17.13.3",
         "langchain": "^0.3.19",
+        "nestjs-pino": "^4.3.1",
+        "pino-pretty": "^13.0.0",
         "reflect-metadata": "^0.2.2",
-        "rxjs": "^7.8.1"
+        "rxjs": "^7.8.1",
+        "zod": "^3.24.2"
     },
     "devDependencies": {
         "@eslint/eslintrc": "^3.2.0",

@@ -1,0 +1,4 @@
+export const Env: Record<string, string> = {
+    OPENAI_API_KEY: 'OPENAI_API_KEY',
+    OPENAI_API_URL: 'OPENAI_API_URL'
+}
