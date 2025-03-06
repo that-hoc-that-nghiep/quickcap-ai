@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { Env } from 'src/utils/constant'
 import { ChatOpenAI } from '@langchain/openai'
+import * as nsfwjs from 'nsfwjs'
 
 const AI_MODEL = 'gpt-4o'
 
@@ -11,7 +12,7 @@ export class AiService {
 
     constructor(private readonly configSerivce: ConfigService<typeof Env, true>) {}
 
-    getLLM = () => {
+    getLLM() {
         return new ChatOpenAI({
             model: AI_MODEL,
             configuration: {
@@ -19,5 +20,9 @@ export class AiService {
                 apiKey: this.configSerivce.get('OPENAI_API_KEY')
             }
         })
+    }
+
+    async getNSFWDetectModel() {
+        return await nsfwjs.load()
     }
 }
