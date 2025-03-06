@@ -1,10 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { GenerateVideoDataReq } from './dto/generate-video-data-req'
-// import { GenerateVideoDataRes } from './dto/generate-video-data-res'
 import { AiService } from 'src/ai/ai.service'
 import { StructuredOutputParser } from 'langchain/output_parsers'
-import { ChatPromptTemplate } from '@langchain/core/prompts'
+import { ChatPromptTemplate, MessagesPlaceholder } from '@langchain/core/prompts'
 import { z } from 'zod'
+import { ChatReq } from './dto/chat-req'
+import { StringOutputParser } from '@langchain/core/output_parsers'
 
 @Injectable()
 export class VideoService {
@@ -76,5 +77,38 @@ export class VideoService {
         this.logger.log(`Generated video data: ${JSON.stringify(res)}`)
 
         return res
+    }
+
+    // This api will recieve video transcript to understand video context, conversation history and user's question to provide a response
+    async chat(chatReq: ChatReq) {
+        const { question, conversation, transcript } = chatReq
+
+        const prompt = ChatPromptTemplate.fromMessages([
+            [
+                'user',
+                `You are an AI assistant that helps users understand video content.
+                You will be provided with a video transcript and a conversation history.
+                Use both the transcript and conversation history as context to answer the user's latest question.
+                Maintain a helpful, conversational tone and be concise in your responses.
+                If the answer is not available in the transcript or previous conversation, say so politely.
+                
+                {transcript}
+                `
+            ],
+            new MessagesPlaceholder('conversation'),
+            ['user', '{question}']
+        ])
+
+        const llm = this.aiService.getLLM()
+        const chain = prompt.pipe(llm).pipe(new StringOutputParser())
+
+        const res = await chain.invoke({
+            transcript,
+            conversation,
+            question
+        })
+
+        this.logger.log(`Chat response: ${res}`)
+        return { response: res }
     }
 }
