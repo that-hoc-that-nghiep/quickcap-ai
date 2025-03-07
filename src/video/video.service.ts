@@ -336,7 +336,7 @@ export class VideoService {
     private async processFramesWithNSFW(
         frameFiles: string[],
         model: nsfwjs.NSFWJS,
-        batchSize = 10
+        batchSize = 50
     ): Promise<nsfwjs.PredictionType[][]> {
         const predictions: nsfwjs.PredictionType[][] = []
 

@@ -78,7 +78,7 @@ export class VideoController {
     })
     async checkNSFW(@Body() checkNsfwReq: CheckNSFWReq, @Res() res: Response) {
         try {
-            return res.status(HttpStatus.CREATED).json(await this.videoService.checkNSFW(checkNsfwReq))
+            return res.status(HttpStatus.OK).json(await this.videoService.checkNSFW(checkNsfwReq))
         } catch (error) {
             this.logger.error('Check NSFW error:', {
                 message: error.message,
