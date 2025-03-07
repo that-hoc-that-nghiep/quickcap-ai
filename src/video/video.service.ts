@@ -335,24 +335,42 @@ export class VideoService {
 
     private async processFramesWithNSFW(
         frameFiles: string[],
-        model: nsfwjs.NSFWJS
+        model: nsfwjs.NSFWJS,
+        batchSize = 10
     ): Promise<nsfwjs.PredictionType[][]> {
         const predictions: nsfwjs.PredictionType[][] = []
 
-        for (const framePath of frameFiles) {
-            try {
-                // Load the image using tfjs-node
-                const imageTensor = await this.convertImageToTensor(framePath)
+        // Process frames in batches to avoid memory issues
+        for (let i = 0; i < frameFiles.length; i += batchSize) {
+            const batch = frameFiles.slice(i, i + batchSize)
+            this.logger.log(
+                `Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(frameFiles.length / batchSize)} (${batch.length} frames)`
+            )
 
-                // Classify the image using NSFW model
-                const framePredictions = await model.classify(imageTensor)
-                predictions.push(framePredictions)
+            const batchPromises = batch.map(async (framePath) => {
+                try {
+                    // Load the image using tfjs-node
+                    const imageTensor = await this.convertImageToTensor(framePath)
 
-                // this.logger.debug(`Processed frame ${path.basename(framePath)}`)
-            } catch (error) {
-                this.logger.error(`Error processing frame ${framePath}: ${error.message}`)
-                // Continue with other frames even if one fails
-            }
+                    // Classify the image using NSFW model
+                    const prediction = await model.classify(imageTensor)
+
+                    // Clean up tensor to prevent memory leaks
+                    imageTensor.dispose()
+
+                    return prediction
+                } catch (error) {
+                    this.logger.error(`Error processing frame ${framePath}: ${error.message}`)
+                    // Return empty array for failed frames
+                    return []
+                }
+            })
+
+            // Process this batch in parallel
+            const batchResults = await Promise.all(batchPromises)
+
+            // Add results to main predictions array
+            predictions.push(...batchResults.filter((prediction) => prediction.length > 0))
         }
 
         return predictions
