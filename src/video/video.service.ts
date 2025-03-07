@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Inject, Injectable, Logger } from '@nestjs/common'
 import { GenerateVideoDataReq } from './dto/generate-video-data-req'
 import { AiService } from 'src/ai/ai.service'
 import { StructuredOutputParser } from 'langchain/output_parsers'
@@ -15,9 +15,12 @@ import * as jpeg from 'jpeg-js'
 import { v4 as uuidv4 } from 'uuid'
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3'
 import { ConfigService } from '@nestjs/config'
-import { Env } from 'src/utils/constant'
+import { DEFAULT_CACHE_TTL, Env } from 'src/utils/constant'
 import * as nsfwjs from 'nsfwjs'
 import ffmpegPath from 'ffmpeg-static'
+import { CACHE_MANAGER } from '@nestjs/cache-manager'
+import { Cache } from 'cache-manager'
+import { createHash } from 'crypto'
 
 @Injectable()
 export class VideoService {
@@ -25,6 +28,7 @@ export class VideoService {
     private s3Client: S3Client
 
     constructor(
+        @Inject(CACHE_MANAGER) private cacheManager: Cache,
         private readonly aiService: AiService,
         private readonly configService: ConfigService<typeof Env, true>
     ) {
@@ -46,7 +50,21 @@ export class VideoService {
         }
     }
 
+    private generateCacheKey(prefix: string, data: any): string {
+        const hash = createHash('md5').update(JSON.stringify(data)).digest('hex')
+        return `${prefix}_${hash}`
+    }
+
     async generateVideoData(generateVideoDataReq: GenerateVideoDataReq) {
+        const cacheKey = this.generateCacheKey('generate_video_data', generateVideoDataReq)
+
+        // Try to get from cache
+        const cachedResult = await this.cacheManager.get(cacheKey)
+        if (cachedResult) {
+            this.logger.log(`Retrieved video data from cache with key: ${cacheKey}`)
+            return cachedResult
+        }
+
         const { transcript, categories } = generateVideoDataReq
 
         const videoDataResSchema = z
@@ -109,11 +127,23 @@ export class VideoService {
 
         this.logger.log(`Generated video data: ${JSON.stringify(res)}`)
 
+        // Store result in cache
+        await this.cacheManager.set(cacheKey, res, DEFAULT_CACHE_TTL)
+
         return res
     }
 
     // This api will recieve video transcript to understand video context, conversation history and user's question to provide a response
     async chat(chatReq: ChatReq) {
+        const cacheKey = this.generateCacheKey('chat', chatReq)
+
+        // Try to get from cache
+        const cachedResult = await this.cacheManager.get(cacheKey)
+        if (cachedResult) {
+            this.logger.log(`Retrieved chat response from cache with key: ${cacheKey}`)
+            return cachedResult
+        }
+
         const { question, conversation, transcript } = chatReq
 
         const prompt = ChatPromptTemplate.fromMessages([
@@ -142,10 +172,24 @@ export class VideoService {
         })
 
         this.logger.log(`Chat response: ${res}`)
-        return { response: res }
+        const result = { response: res }
+
+        // Store result in cache
+        await this.cacheManager.set(cacheKey, result, DEFAULT_CACHE_TTL)
+
+        return result
     }
 
     async checkNSFW(checkNsfwReq: CheckNSFWReq) {
+        const cacheKey = this.generateCacheKey('check_nsfw', checkNsfwReq)
+
+        // Try to get from cache
+        const cachedResult = await this.cacheManager.get(cacheKey)
+        if (cachedResult) {
+            this.logger.log(`Retrieved NSFW check result from cache with key: ${cacheKey}`)
+            return cachedResult
+        }
+
         const { videoUrl } = checkNsfwReq
         const checkModel = await this.aiService.getNSFWDetectModel()
 
@@ -178,12 +222,16 @@ export class VideoService {
             // Clean up temporary files
             await this.cleanupTempFiles(tempVideoPath, framesDir)
 
-            return {
+            const nsswResult = {
                 dominantCategory: result.dominantCategory,
                 categoryBreakdown: result.categoryBreakdown,
                 isNSFW: ['Porn', 'Hentai', 'Sexy'].includes(result.dominantCategory)
             }
-            return { test: 'done' }
+
+            // Store result in cache
+            await this.cacheManager.set(cacheKey, nsswResult, DEFAULT_CACHE_TTL)
+
+            return nsswResult
         } catch (error) {
             this.logger.error(`Error checking NSFW content: ${error.message}`)
             throw new Error(`Failed to process video for NSFW content: ${error.message}`)

@@ -3,6 +3,7 @@ import { VideoModule } from './video/video.module'
 import { AiModule } from './ai/ai.module'
 import { ConfigModule } from '@nestjs/config'
 import { LoggerModule } from 'nestjs-pino'
+import { CacheModule } from '@nestjs/cache-manager'
 import * as Joi from 'joi'
 
 @Module({
@@ -24,6 +25,9 @@ import * as Joi from 'joi'
                     }
                 }
             }
+        }),
+        CacheModule.register({
+            isGlobal: true
         }),
         VideoModule,
         AiModule

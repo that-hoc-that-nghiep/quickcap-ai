@@ -16,7 +16,9 @@ export class CheckNSFWRes {
     })
     dominantCategory: VideoCategory
 
-    @ApiProperty()
+    @ApiProperty({
+        description: 'The breakdown of the video in each category, values are: Drawing, Hentai, Neutral, Porn, Sexy'
+    })
     categoryBreakdown: {
         Drawing: number
         Hentai: number
@@ -24,5 +26,6 @@ export class CheckNSFWRes {
         Porn: number
         Sexy: number
     }
+    @ApiProperty()
     isNSFW: boolean
 }

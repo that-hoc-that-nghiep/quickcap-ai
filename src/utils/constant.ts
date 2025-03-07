@@ -5,3 +5,6 @@ export const Env: Record<string, string> = {
     AWS_SECRET_ACCESS_KEY: 'AWS_SECRET_ACCESS_KEY',
     AWS_REGION: 'AWS_REGION'
 }
+
+// cache 10s
+export const DEFAULT_CACHE_TTL = 60 * 1000
