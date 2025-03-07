@@ -9,6 +9,7 @@ const AI_MODEL = 'gpt-4o'
 @Injectable()
 export class AiService {
     private readonly logger = new Logger(AiService.name)
+    private nsfwModel: nsfwjs.NSFWJS | null = null
 
     constructor(private readonly configSerivce: ConfigService<typeof Env, true>) {}
 
@@ -23,6 +24,12 @@ export class AiService {
     }
 
     async getNSFWDetectModel() {
-        return await nsfwjs.load()
+        if (!this.nsfwModel) {
+            this.logger.log('Loading NSFW detection model...')
+            // Load the model with TensorFlow.js
+            this.nsfwModel = await nsfwjs.load()
+            this.logger.log('NSFW detection model loaded successfully')
+        }
+        return this.nsfwModel
     }
 }

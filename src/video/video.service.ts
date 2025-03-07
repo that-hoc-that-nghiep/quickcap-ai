@@ -6,12 +6,45 @@ import { ChatPromptTemplate, MessagesPlaceholder } from '@langchain/core/prompts
 import { z } from 'zod'
 import { ChatReq } from './dto/chat-req'
 import { StringOutputParser } from '@langchain/core/output_parsers'
+import { CheckNSFWReq } from './dto/check-nsfw-req'
+import * as fs from 'fs'
+import * as path from 'path'
+import * as ffmpeg from 'fluent-ffmpeg'
+import * as tf from '@tensorflow/tfjs'
+import * as jpeg from 'jpeg-js'
+import { v4 as uuidv4 } from 'uuid'
+import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3'
+import { ConfigService } from '@nestjs/config'
+import { Env } from 'src/utils/constant'
+import * as nsfwjs from 'nsfwjs'
+import ffmpegPath from 'ffmpeg-static'
 
 @Injectable()
 export class VideoService {
     private readonly logger = new Logger(VideoService.name)
+    private s3Client: S3Client
 
-    constructor(private readonly aiService: AiService) {}
+    constructor(
+        private readonly aiService: AiService,
+        private readonly configService: ConfigService<typeof Env, true>
+    ) {
+        // Initialize S3 client
+        this.s3Client = new S3Client({
+            region: this.configService.get('AWS_REGION'),
+            credentials: {
+                accessKeyId: this.configService.get('AWS_ACCESS_KEY_ID'),
+                secretAccessKey: this.configService.get('AWS_SECRET_ACCESS_KEY')
+            }
+        })
+
+        // Set the ffmpeg path to use the bundled binary
+        if (ffmpegPath) {
+            this.logger.log(`Using ffmpeg from: ${ffmpegPath}`)
+            ffmpeg.setFfmpegPath(ffmpegPath)
+        } else {
+            this.logger.warn('ffmpeg-static path not found, using system ffmpeg if available')
+        }
+    }
 
     async generateVideoData(generateVideoDataReq: GenerateVideoDataReq) {
         const { transcript, categories } = generateVideoDataReq
@@ -110,5 +143,235 @@ export class VideoService {
 
         this.logger.log(`Chat response: ${res}`)
         return { response: res }
+    }
+
+    async checkNSFW(checkNsfwReq: CheckNSFWReq) {
+        const { videoUrl } = checkNsfwReq
+        const checkModel = await this.aiService.getNSFWDetectModel()
+
+        try {
+            this.logger.log(`Processing video for NSFW content: ${videoUrl}`)
+
+            // Create temporary directories for processing
+            const tempDir = path.join(process.cwd(), 'temp')
+            await fs.promises.mkdir(tempDir, { recursive: true })
+
+            const videoId = uuidv4()
+            const tempVideoPath = path.join(tempDir, `${videoId}.mp4`)
+            const framesDir = path.join(tempDir, `${videoId}-frames`)
+            await fs.promises.mkdir(framesDir, { recursive: true })
+
+            // Download the video from S3
+            await this.downloadVideoFromS3(videoUrl, tempVideoPath)
+            this.logger.log(`Video downloaded to ${tempVideoPath}`)
+
+            // Extract frames from the video
+            const frameFiles = await this.extractFrames(tempVideoPath, framesDir)
+            this.logger.log(`Extracted ${frameFiles.length} frames for analysis`)
+
+            // Process frames with NSFW detection
+            const predictions = await this.processFramesWithNSFW(frameFiles, checkModel)
+
+            // Analyze the results
+            const result = this.analyzeNSFWPredictions(predictions)
+
+            // Clean up temporary files
+            await this.cleanupTempFiles(tempVideoPath, framesDir)
+
+            return {
+                dominantCategory: result.dominantCategory,
+                categoryBreakdown: result.categoryBreakdown,
+                isNSFW: ['Porn', 'Hentai', 'Sexy'].includes(result.dominantCategory)
+            }
+            return { test: 'done' }
+        } catch (error) {
+            this.logger.error(`Error checking NSFW content: ${error.message}`)
+            throw new Error(`Failed to process video for NSFW content: ${error.message}`)
+        }
+    }
+
+    private async downloadVideoFromS3(videoUrl: string, outputPath: string): Promise<void> {
+        try {
+            // Parse the S3 URL to extract bucket and key
+            const videoUrlObj = new URL(videoUrl)
+            const bucketName = videoUrlObj.hostname.split('.')[0]
+            const objectKey = videoUrlObj.pathname.substring(1) // Remove leading slash
+
+            // Get the object from S3
+            const command = new GetObjectCommand({
+                Bucket: bucketName,
+                Key: objectKey
+            })
+
+            const response = await this.s3Client.send(command)
+
+            // Create a write stream to save the video locally
+            const writeStream = fs.createWriteStream(outputPath)
+
+            // Save the video stream to a file
+            if (response.Body) {
+                return new Promise((resolve, reject) => {
+                    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                    // @ts-ignore - S3 response body is a readable stream
+                    response.Body.pipe(writeStream)
+                        .on('finish', () => resolve())
+                        .on('error', reject)
+                })
+            } else {
+                throw new Error('Empty response body from S3')
+            }
+        } catch (error) {
+            this.logger.error(`Error downloading video from S3: ${error.message}`)
+            throw error
+        }
+    }
+
+    private async extractFrames(videoPath: string, outputDir: string): Promise<string[]> {
+        return new Promise((resolve, reject) => {
+            this.logger.log(`Starting frame extraction from ${videoPath} to ${outputDir}`)
+
+            ffmpeg(videoPath)
+                .outputOptions([
+                    // Extract every 12th frame and resize to 360p height
+                    '-vf',
+                    'select=not(mod(n\\,12)),scale=-1:360',
+                    '-vsync',
+                    'vfr', // Variable framerate for selected frames
+                    '-q:v',
+                    '3' // Quality setting (lower means better quality)
+                ])
+                .output(path.join(outputDir, 'frame-%04d.jpg'))
+                .on('start', (commandLine) => {
+                    this.logger.log(`ffmpeg started with command: ${commandLine}`)
+                })
+                .on('end', async () => {
+                    try {
+                        this.logger.log(`Frame extraction completed`)
+                        const files = await fs.promises.readdir(outputDir)
+                        const frameFiles = files
+                            .filter((file) => file.startsWith('frame-') && file.endsWith('.jpg'))
+                            .map((file) => path.join(outputDir, file))
+                            .sort() // Sort to ensure frames are processed in order
+
+                        this.logger.log(`Found ${frameFiles.length} extracted frames`)
+                        resolve(frameFiles)
+                    } catch (err) {
+                        this.logger.error(`Error reading frames directory: ${err.message}`)
+                        // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
+                        reject(err)
+                    }
+                })
+                .on('error', (err) => {
+                    this.logger.error(`Error extracting frames: ${err.message}`)
+                    // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
+                    reject(err)
+                })
+                .run()
+        })
+    }
+
+    private async convertImageToTensor(imagePath: string): Promise<tf.Tensor3D> {
+        // Load the image using tfjs
+        const imageBuffer = await fs.promises.readFile(imagePath)
+        const image = jpeg.decode(imageBuffer, { useTArray: true })
+
+        const numChannels = 3
+        const numPixels = image.width * image.height
+        const values = new Int32Array(numPixels * numChannels)
+
+        for (let i = 0; i < numPixels; i++)
+            for (let c = 0; c < numChannels; ++c) values[i * numChannels + c] = image.data[i * 4 + c]
+
+        return tf.tensor3d(values, [image.height, image.width, numChannels], 'int32')
+    }
+
+    private async processFramesWithNSFW(
+        frameFiles: string[],
+        model: nsfwjs.NSFWJS
+    ): Promise<nsfwjs.PredictionType[][]> {
+        const predictions: nsfwjs.PredictionType[][] = []
+
+        for (const framePath of frameFiles) {
+            try {
+                // Load the image using tfjs-node
+                const imageTensor = await this.convertImageToTensor(framePath)
+
+                // Classify the image using NSFW model
+                const framePredictions = await model.classify(imageTensor)
+                predictions.push(framePredictions)
+
+                // this.logger.debug(`Processed frame ${path.basename(framePath)}`)
+            } catch (error) {
+                this.logger.error(`Error processing frame ${framePath}: ${error.message}`)
+                // Continue with other frames even if one fails
+            }
+        }
+
+        return predictions
+    }
+
+    private analyzeNSFWPredictions(predictions: nsfwjs.PredictionType[][]): {
+        dominantCategory: string
+        categoryBreakdown: Record<string, number>
+    } {
+        // Categories to track: Drawing, Hentai, Neutral, Porn, Sexy
+        const categoryScores: Record<string, number> = {
+            Drawing: 0,
+            Hentai: 0,
+            Neutral: 0,
+            Porn: 0,
+            Sexy: 0
+        }
+
+        // Count frames where each category was the top prediction
+        for (const framePredictions of predictions) {
+            if (framePredictions.length === 0) continue
+
+            // Sort predictions for this frame to find the highest probability
+            const sortedPredictions = [...framePredictions].sort((a, b) => b.probability - a.probability)
+            const topCategory = sortedPredictions[0].className
+
+            // Increment count for the top category
+            categoryScores[topCategory] = (categoryScores[topCategory] || 0) + 1
+        }
+
+        // Find the category with the highest count
+        let dominantCategory = 'Neutral' // Default
+        let maxCount = 0
+
+        for (const [category, count] of Object.entries(categoryScores)) {
+            if (count > maxCount) {
+                maxCount = count
+                dominantCategory = category
+            }
+        }
+
+        return {
+            dominantCategory,
+            categoryBreakdown: categoryScores
+        }
+    }
+
+    private async cleanupTempFiles(videoPath: string, framesDir: string): Promise<void> {
+        try {
+            // Remove the temporary video file
+            if (fs.existsSync(videoPath)) {
+                await fs.promises.unlink(videoPath)
+            }
+
+            // Remove frame files and the frames directory
+            if (fs.existsSync(framesDir)) {
+                const files = await fs.promises.readdir(framesDir)
+                for (const file of files) {
+                    await fs.promises.unlink(path.join(framesDir, file))
+                }
+                await fs.promises.rmdir(framesDir)
+            }
+
+            this.logger.log('Temporary files cleaned up successfully')
+        } catch (error) {
+            this.logger.warn(`Error cleaning up temporary files: ${error.message}`)
+            // Non-critical error, so we don't throw
+        }
     }
 }

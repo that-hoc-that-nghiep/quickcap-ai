@@ -4,10 +4,20 @@ import { Logger } from 'nestjs-pino'
 import { ConfigService } from '@nestjs/config'
 import { ValidationPipe } from '@nestjs/common'
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
+import { initializeFfmpeg } from './utils/ffmpeg.helper'
 
 async function bootstrap() {
+    // Initialize ffmpeg before starting the application
+    initializeFfmpeg()
+
     const app = await NestFactory.create(AppModule)
-    app.useGlobalPipes(new ValidationPipe())
+    app.useGlobalPipes(
+        new ValidationPipe({
+            whitelist: true,
+            transform: true,
+            forbidNonWhitelisted: true
+        })
+    )
     const logger = app.get(Logger)
     app.useLogger(logger)
     const configService = app.get(ConfigService)
