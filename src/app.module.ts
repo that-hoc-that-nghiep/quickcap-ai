@@ -6,8 +6,6 @@ import { LoggerModule } from 'nestjs-pino'
 import { CacheModule } from '@nestjs/cache-manager'
 import { S3Module } from './s3/s3.module'
 import { FfmpegModule } from './ffmpeg/ffmpeg.module'
-import { ElevenlabsService } from './elevenlabs/elevenlabs.service'
-import { ElevenlabsModule } from './elevenlabs/elevenlabs.module'
 import * as Joi from 'joi'
 
 @Module({
@@ -20,7 +18,6 @@ import * as Joi from 'joi'
                 AWS_ACCESS_KEY_ID: Joi.string().required(),
                 AWS_SECRET_ACCESS_KEY: Joi.string().required(),
                 AWS_REGION: Joi.string().default('ap-southeast-1'),
-                ELEVENLABS_API_KEY: Joi.string().required(),
                 PORT: Joi.number().default(3000)
             })
         }),
@@ -40,10 +37,9 @@ import * as Joi from 'joi'
         VideoModule,
         AiModule,
         S3Module,
-        FfmpegModule,
-        ElevenlabsModule
+        FfmpegModule
     ],
     controllers: [],
-    providers: [ElevenlabsService]
+    providers: []
 })
 export class AppModule {}

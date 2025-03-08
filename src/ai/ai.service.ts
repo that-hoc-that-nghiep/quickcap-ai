@@ -1,3 +1,4 @@
+import { OpenAIWhisperAudio } from '@langchain/community/document_loaders/fs/openai_whisper_audio'
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { Env } from 'src/utils/constant'
@@ -21,6 +22,20 @@ export class AiService {
                 apiKey: this.configSerivce.get('OPENAI_API_KEY')
             }
         })
+    }
+
+    getWhisperLoader(audioPath: string): OpenAIWhisperAudio {
+        try {
+            return new OpenAIWhisperAudio(audioPath, {
+                clientOptions: {
+                    apiKey: this.configSerivce.get('OPENAI_API_KEY'),
+                    baseURL: this.configSerivce.get('OPENAI_API_URL')
+                }
+            })
+        } catch (error) {
+            this.logger.error(`Failed to create Whisper loader: ${error.message}`)
+            throw new Error(`Failed to initialize Whisper loader: ${error.message}`)
+        }
     }
 
     async getNSFWDetectModel() {

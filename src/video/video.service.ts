@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common'
+import { Inject, Injectable, InternalServerErrorException, Logger } from '@nestjs/common'
 import { GenerateVideoDataReq } from './dto/generate-video-data-req'
 import { AiService } from 'src/ai/ai.service'
 import { StructuredOutputParser } from 'langchain/output_parsers'
@@ -18,7 +18,6 @@ import { S3Service } from 'src/s3/s3.service'
 import * as path from 'path'
 import { FfmpegService } from 'src/ffmpeg/ffmpeg.service'
 import { TranscribeReq } from './dto/transcribe-req'
-import { ElevenlabsService } from 'src/elevenlabs/elevenlabs.service'
 
 @Injectable()
 export class VideoService {
@@ -28,8 +27,7 @@ export class VideoService {
         @Inject(CACHE_MANAGER) private cacheManager: Cache,
         private readonly aiService: AiService,
         private readonly s3Service: S3Service,
-        private readonly ffmpegService: FfmpegService,
-        private readonly elevenLabsService: ElevenlabsService
+        private readonly ffmpegService: FfmpegService
     ) {}
 
     private generateCacheKey(prefix: string, data: any): string {
@@ -65,19 +63,30 @@ export class VideoService {
 
             await this.ffmpegService.extractAudio(tempVideoPath, tempAudioPath)
 
-            // Transcribe the audio file using ElevenLabs
-            const transcription = await this.elevenLabsService.generateTranscript(tempAudioPath)
+            const whisperLoader = this.aiService.getWhisperLoader(tempAudioPath)
+
+            const document = await whisperLoader.load()
+
+            const transcription = document[0].pageContent
+
+            // Ensure we have a valid string transcription
+            if (typeof transcription !== 'string') {
+                throw new InternalServerErrorException('Failed to generate valid transcription')
+            }
+
+            this.logger.log(`Generated transcript: ${transcription}`)
 
             // Store result in cache
             await this.cacheManager.set(cacheKey, transcription, DEFAULT_CACHE_TTL)
 
             // Cleanup temporary file
+            await this.cleanupTempVideoFiles(tempVideoPath)
             await this.cleanupTempAudioFiles(tempAudioPath)
 
-            return transcription
+            return { transcript: transcription }
         } catch (error) {
             this.logger.error(`Error generate transcript: ${error.message}`)
-            throw new Error(`Failed to process generate transcript: ${error.message}`)
+            throw new InternalServerErrorException(`Failed to process generate transcript: ${error.message}`)
         }
     }
 
@@ -260,7 +269,7 @@ export class VideoService {
             return nsswResult
         } catch (error) {
             this.logger.error(`Error checking NSFW content: ${error.message}`)
-            throw new Error(`Failed to process video for NSFW content: ${error.message}`)
+            throw new InternalServerErrorException(`Failed to process video for NSFW content: ${error.message}`)
         }
     }
 
@@ -349,7 +358,7 @@ export class VideoService {
         }
     }
 
-    private async cleanupTempVideoFiles(videoPath: string, framesDir: string): Promise<void> {
+    private async cleanupTempVideoFiles(videoPath: string, framesDir?: string): Promise<void> {
         try {
             // Remove the temporary video file
             if (fs.existsSync(videoPath)) {
@@ -357,7 +366,7 @@ export class VideoService {
             }
 
             // Remove frame files and the frames directory
-            if (fs.existsSync(framesDir)) {
+            if (framesDir && fs.existsSync(framesDir)) {
                 const files = await fs.promises.readdir(framesDir)
                 for (const file of files) {
                     await fs.promises.unlink(path.join(framesDir, file))
