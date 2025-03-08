@@ -10,6 +10,6 @@ export const Env: Record<string, string> = {
 // cache 10s
 export const DEFAULT_CACHE_TTL = 60 * 1000
 
-export const QUEUE_NAME = 'quickcap_ai'
+export const QUEUE_NAME = 'quickcap'
 
 export const SERVICE_NAME = 'quickcap-ai'
