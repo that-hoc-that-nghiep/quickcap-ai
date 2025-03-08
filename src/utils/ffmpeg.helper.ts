@@ -6,13 +6,9 @@ const logger = new Logger('FFmpegHelper')
 
 export function initializeFfmpeg(): void {
     if (ffmpegStatic) {
-        logger.log(`Setting ffmpeg path to: ${ffmpegStatic}`)
-        ffmpeg.setFfmpegPath(ffmpegStatic)
+        logger.log(`Setting ffmpeg path to: ${ffmpegStatic.default}`)
+        ffmpeg.setFfmpegPath(ffmpegStatic as any)
     } else {
         logger.warn('ffmpeg-static path not found, using system ffmpeg if available')
     }
 }
-
-// export function getAvailableFfmpegPath(): string {
-//     return ffmpegStatic
-// }

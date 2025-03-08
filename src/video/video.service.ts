@@ -8,47 +8,26 @@ import { ChatReq } from './dto/chat-req'
 import { StringOutputParser } from '@langchain/core/output_parsers'
 import { CheckNSFWReq } from './dto/check-nsfw-req'
 import * as fs from 'fs'
-import * as path from 'path'
-import * as ffmpeg from 'fluent-ffmpeg'
-import * as tf from '@tensorflow/tfjs'
-import * as jpeg from 'jpeg-js'
 import { v4 as uuidv4 } from 'uuid'
-import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3'
-import { ConfigService } from '@nestjs/config'
-import { DEFAULT_CACHE_TTL, Env } from 'src/utils/constant'
+import { DEFAULT_CACHE_TTL } from 'src/utils/constant'
 import * as nsfwjs from 'nsfwjs'
-import ffmpegPath from 'ffmpeg-static'
 import { CACHE_MANAGER } from '@nestjs/cache-manager'
 import { Cache } from 'cache-manager'
 import { createHash } from 'crypto'
+import { S3Service } from 'src/s3/s3.service'
+import * as path from 'path'
+import { FfmpegService } from 'src/ffmpeg/ffmpeg.service'
 
 @Injectable()
 export class VideoService {
     private readonly logger = new Logger(VideoService.name)
-    private s3Client: S3Client
 
     constructor(
         @Inject(CACHE_MANAGER) private cacheManager: Cache,
         private readonly aiService: AiService,
-        private readonly configService: ConfigService<typeof Env, true>
-    ) {
-        // Initialize S3 client
-        this.s3Client = new S3Client({
-            region: this.configService.get('AWS_REGION'),
-            credentials: {
-                accessKeyId: this.configService.get('AWS_ACCESS_KEY_ID'),
-                secretAccessKey: this.configService.get('AWS_SECRET_ACCESS_KEY')
-            }
-        })
-
-        // Set the ffmpeg path to use the bundled binary
-        if (ffmpegPath) {
-            this.logger.log(`Using ffmpeg from: ${ffmpegPath}`)
-            ffmpeg.setFfmpegPath(ffmpegPath)
-        } else {
-            this.logger.warn('ffmpeg-static path not found, using system ffmpeg if available')
-        }
-    }
+        private readonly s3Service: S3Service,
+        private readonly ffmpegService: FfmpegService
+    ) {}
 
     private generateCacheKey(prefix: string, data: any): string {
         const hash = createHash('md5').update(JSON.stringify(data)).digest('hex')
@@ -206,11 +185,11 @@ export class VideoService {
             await fs.promises.mkdir(framesDir, { recursive: true })
 
             // Download the video from S3
-            await this.downloadVideoFromS3(videoUrl, tempVideoPath)
+            await this.s3Service.downloadFromS3(videoUrl, tempVideoPath)
             this.logger.log(`Video downloaded to ${tempVideoPath}`)
 
             // Extract frames from the video
-            const frameFiles = await this.extractFrames(tempVideoPath, framesDir)
+            const frameFiles = await this.ffmpegService.extractFrames(tempVideoPath, framesDir)
             this.logger.log(`Extracted ${frameFiles.length} frames for analysis`)
 
             // Process frames with NSFW detection
@@ -238,101 +217,6 @@ export class VideoService {
         }
     }
 
-    private async downloadVideoFromS3(videoUrl: string, outputPath: string): Promise<void> {
-        try {
-            // Parse the S3 URL to extract bucket and key
-            const videoUrlObj = new URL(videoUrl)
-            const bucketName = videoUrlObj.hostname.split('.')[0]
-            const objectKey = videoUrlObj.pathname.substring(1) // Remove leading slash
-
-            // Get the object from S3
-            const command = new GetObjectCommand({
-                Bucket: bucketName,
-                Key: objectKey
-            })
-
-            const response = await this.s3Client.send(command)
-
-            // Create a write stream to save the video locally
-            const writeStream = fs.createWriteStream(outputPath)
-
-            // Save the video stream to a file
-            if (response.Body) {
-                return new Promise((resolve, reject) => {
-                    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                    // @ts-ignore - S3 response body is a readable stream
-                    response.Body.pipe(writeStream)
-                        .on('finish', () => resolve())
-                        .on('error', reject)
-                })
-            } else {
-                throw new Error('Empty response body from S3')
-            }
-        } catch (error) {
-            this.logger.error(`Error downloading video from S3: ${error.message}`)
-            throw error
-        }
-    }
-
-    private async extractFrames(videoPath: string, outputDir: string): Promise<string[]> {
-        return new Promise((resolve, reject) => {
-            this.logger.log(`Starting frame extraction from ${videoPath} to ${outputDir}`)
-
-            ffmpeg(videoPath)
-                .outputOptions([
-                    // Extract every 12th frame and resize to 360p height
-                    '-vf',
-                    'select=not(mod(n\\,12)),scale=-1:360',
-                    '-vsync',
-                    'vfr', // Variable framerate for selected frames
-                    '-q:v',
-                    '3' // Quality setting (lower means better quality)
-                ])
-                .output(path.join(outputDir, 'frame-%04d.jpg'))
-                .on('start', (commandLine) => {
-                    this.logger.log(`ffmpeg started with command: ${commandLine}`)
-                })
-                .on('end', async () => {
-                    try {
-                        this.logger.log(`Frame extraction completed`)
-                        const files = await fs.promises.readdir(outputDir)
-                        const frameFiles = files
-                            .filter((file) => file.startsWith('frame-') && file.endsWith('.jpg'))
-                            .map((file) => path.join(outputDir, file))
-                            .sort() // Sort to ensure frames are processed in order
-
-                        this.logger.log(`Found ${frameFiles.length} extracted frames`)
-                        resolve(frameFiles)
-                    } catch (err) {
-                        this.logger.error(`Error reading frames directory: ${err.message}`)
-                        // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
-                        reject(err)
-                    }
-                })
-                .on('error', (err) => {
-                    this.logger.error(`Error extracting frames: ${err.message}`)
-                    // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
-                    reject(err)
-                })
-                .run()
-        })
-    }
-
-    private async convertImageToTensor(imagePath: string): Promise<tf.Tensor3D> {
-        // Load the image using tfjs
-        const imageBuffer = await fs.promises.readFile(imagePath)
-        const image = jpeg.decode(imageBuffer, { useTArray: true })
-
-        const numChannels = 3
-        const numPixels = image.width * image.height
-        const values = new Int32Array(numPixels * numChannels)
-
-        for (let i = 0; i < numPixels; i++)
-            for (let c = 0; c < numChannels; ++c) values[i * numChannels + c] = image.data[i * 4 + c]
-
-        return tf.tensor3d(values, [image.height, image.width, numChannels], 'int32')
-    }
-
     private async processFramesWithNSFW(
         frameFiles: string[],
         model: nsfwjs.NSFWJS,
@@ -350,7 +234,7 @@ export class VideoService {
             const batchPromises = batch.map(async (framePath) => {
                 try {
                     // Load the image using tfjs-node
-                    const imageTensor = await this.convertImageToTensor(framePath)
+                    const imageTensor = await this.ffmpegService.convertImageToTensor(framePath)
 
                     // Classify the image using NSFW model
                     const prediction = await model.classify(imageTensor)

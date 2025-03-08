@@ -4,6 +4,8 @@ import { AiModule } from './ai/ai.module'
 import { ConfigModule } from '@nestjs/config'
 import { LoggerModule } from 'nestjs-pino'
 import { CacheModule } from '@nestjs/cache-manager'
+import { S3Module } from './s3/s3.module';
+import { FfmpegModule } from './ffmpeg/ffmpeg.module';
 import * as Joi from 'joi'
 
 @Module({
@@ -30,7 +32,9 @@ import * as Joi from 'joi'
             isGlobal: true
         }),
         VideoModule,
-        AiModule
+        AiModule,
+        S3Module,
+        FfmpegModule
     ],
     controllers: [],
     providers: []
