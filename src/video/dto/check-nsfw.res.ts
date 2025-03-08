@@ -9,6 +9,9 @@ export enum VideoCategory {
 }
 
 export class CheckNSFWRes {
+    @ApiProperty()
+    videoId: string
+
     @ApiProperty({
         enum: VideoCategory,
         enumName: 'VideoCategory',

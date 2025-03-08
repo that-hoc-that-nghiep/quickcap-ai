@@ -5,4 +5,8 @@ export class CheckNSFWReq {
     @ApiProperty()
     @IsString()
     videoUrl: string
+
+    @ApiProperty()
+    @IsString()
+    videoId: string
 }

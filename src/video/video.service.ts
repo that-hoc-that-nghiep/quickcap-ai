@@ -225,7 +225,7 @@ export class VideoService {
             return cachedResult
         }
 
-        const { videoUrl } = checkNsfwReq
+        const { videoUrl, videoId: originVideoId } = checkNsfwReq
         const checkModel = await this.aiService.getNSFWDetectModel()
 
         try {
@@ -258,6 +258,7 @@ export class VideoService {
             await this.cleanupTempVideoFiles(tempVideoPath, framesDir)
 
             const nsswResult = {
+                videoId: originVideoId,
                 dominantCategory: result.dominantCategory,
                 categoryBreakdown: result.categoryBreakdown,
                 isNSFW: ['Porn', 'Hentai', 'Sexy'].includes(result.dominantCategory)
