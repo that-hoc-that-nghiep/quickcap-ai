@@ -78,4 +78,33 @@ export class FfmpegService {
 
         return tf.tensor3d(values, [image.height, image.width, numChannels], 'int32')
     }
+
+    async extractAudio(videoPath: string, audioOutputPath: string): Promise<void> {
+        return new Promise((resolve, reject) => {
+            this.logger.log(`Extracting audio from ${videoPath} to ${audioOutputPath}`)
+
+            ffmpeg(videoPath)
+                .outputOptions([
+                    '-vn', // Disable video
+                    '-acodec',
+                    'libmp3lame', // Audio codec
+                    '-ab',
+                    '128k' // Audio bitrate
+                ])
+                .output(audioOutputPath)
+                .on('start', (commandLine) => {
+                    this.logger.log(`ffmpeg started with command: ${commandLine}`)
+                })
+                .on('end', () => {
+                    this.logger.log(`Audio extraction completed`)
+                    resolve()
+                })
+                .on('error', (err) => {
+                    this.logger.error(`Error extracting audio: ${err.message}`)
+                    // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
+                    reject(err)
+                })
+                .run()
+        })
+    }
 }

@@ -8,12 +8,40 @@ import { ChatReq } from './dto/chat-req'
 import { ChatRes } from './dto/chat-res'
 import { CheckNSFWReq } from './dto/check-nsfw-req'
 import { CheckNSFWRes } from './dto/check-nsfw.res'
+import { TranscribeRes } from './dto/transcribe-res'
+import { TranscribeReq } from './dto/transcribe-req'
 
 @ApiTags('video')
 @Controller('video')
 export class VideoController {
     private readonly logger = new Logger(VideoController.name)
     constructor(private readonly videoService: VideoService) {}
+
+    @Post('transcribe')
+    @ApiExtraModels(TranscribeRes)
+    @ApiResponse({
+        status: 201,
+        description: 'Transcription created successfully',
+        schema: {
+            $ref: getSchemaPath(TranscribeRes)
+        }
+    })
+    async transcribe(@Body() transcribeReq: TranscribeReq, @Res() res: Response) {
+        try {
+            return res.status(HttpStatus.CREATED).json(await this.videoService.generateTranscribe(transcribeReq))
+        } catch (error) {
+            this.logger.error('Transcribe error:', {
+                message: error.message,
+                stack: error.stack,
+                details: error.response
+            })
+
+            return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+                message: 'Internal server error',
+                details: error.message
+            })
+        }
+    }
 
     @Post('video-data')
     @ApiExtraModels(GenerateVideoDataRes)

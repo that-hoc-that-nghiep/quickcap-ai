@@ -17,6 +17,8 @@ import { createHash } from 'crypto'
 import { S3Service } from 'src/s3/s3.service'
 import * as path from 'path'
 import { FfmpegService } from 'src/ffmpeg/ffmpeg.service'
+import { TranscribeReq } from './dto/transcribe-req'
+import { ElevenlabsService } from 'src/elevenlabs/elevenlabs.service'
 
 @Injectable()
 export class VideoService {
@@ -26,12 +28,57 @@ export class VideoService {
         @Inject(CACHE_MANAGER) private cacheManager: Cache,
         private readonly aiService: AiService,
         private readonly s3Service: S3Service,
-        private readonly ffmpegService: FfmpegService
+        private readonly ffmpegService: FfmpegService,
+        private readonly elevenLabsService: ElevenlabsService
     ) {}
 
     private generateCacheKey(prefix: string, data: any): string {
         const hash = createHash('md5').update(JSON.stringify(data)).digest('hex')
         return `${prefix}_${hash}`
+    }
+
+    async generateTranscribe(transcribeReq: TranscribeReq) {
+        const cacheKey = this.generateCacheKey('transcribe', transcribeReq)
+
+        // Try to get from cache
+        const cachedResult = await this.cacheManager.get(cacheKey)
+        if (cachedResult) {
+            this.logger.log(`Retrieved transcript from cache with key: ${cacheKey}`)
+            return cachedResult
+        }
+
+        const { videoUrl } = transcribeReq
+
+        try {
+            this.logger.log(`Transcribing video: ${videoUrl}`)
+
+            // Download the video from S3
+            const tempDir = path.join(process.cwd(), 'temp')
+            await fs.promises.mkdir(tempDir, { recursive: true })
+
+            const soundId = uuidv4()
+            const tempVideoPath = path.join(tempDir, `${soundId}.mp4`)
+            const tempAudioPath = path.join(tempDir, `${soundId}.wav`)
+
+            await this.s3Service.downloadFromS3(videoUrl, tempVideoPath)
+            this.logger.log(`Video downloaded to ${tempVideoPath}`)
+
+            await this.ffmpegService.extractAudio(tempVideoPath, tempAudioPath)
+
+            // Transcribe the audio file using ElevenLabs
+            const transcription = await this.elevenLabsService.generateTranscript(tempAudioPath)
+
+            // Store result in cache
+            await this.cacheManager.set(cacheKey, transcription, DEFAULT_CACHE_TTL)
+
+            // Cleanup temporary file
+            await this.cleanupTempAudioFiles(tempAudioPath)
+
+            return transcription
+        } catch (error) {
+            this.logger.error(`Error generate transcript: ${error.message}`)
+            throw new Error(`Failed to process generate transcript: ${error.message}`)
+        }
     }
 
     async generateVideoData(generateVideoDataReq: GenerateVideoDataReq) {
@@ -199,7 +246,7 @@ export class VideoService {
             const result = this.analyzeNSFWPredictions(predictions)
 
             // Clean up temporary files
-            await this.cleanupTempFiles(tempVideoPath, framesDir)
+            await this.cleanupTempVideoFiles(tempVideoPath, framesDir)
 
             const nsswResult = {
                 dominantCategory: result.dominantCategory,
@@ -302,7 +349,7 @@ export class VideoService {
         }
     }
 
-    private async cleanupTempFiles(videoPath: string, framesDir: string): Promise<void> {
+    private async cleanupTempVideoFiles(videoPath: string, framesDir: string): Promise<void> {
         try {
             // Remove the temporary video file
             if (fs.existsSync(videoPath)) {
@@ -318,6 +365,19 @@ export class VideoService {
                 await fs.promises.rmdir(framesDir)
             }
 
+            this.logger.log('Temporary files cleaned up successfully')
+        } catch (error) {
+            this.logger.warn(`Error cleaning up temporary files: ${error.message}`)
+            // Non-critical error, so we don't throw
+        }
+    }
+
+    private async cleanupTempAudioFiles(audioPath: string): Promise<void> {
+        try {
+            // Remove the temporary audio file
+            if (fs.existsSync(audioPath)) {
+                await fs.promises.unlink(audioPath)
+            }
             this.logger.log('Temporary files cleaned up successfully')
         } catch (error) {
             this.logger.warn(`Error cleaning up temporary files: ${error.message}`)
