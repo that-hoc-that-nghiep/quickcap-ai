@@ -175,8 +175,7 @@ export class VideoController {
 
     // Queue event handler for NSFW check
     @EventPattern('check-nsfw')
-    @Post('test')
-    checkNSFWQueue(@Body() checkNsfwReq: CheckNSFWReq) {
+    checkNSFWQueue(checkNsfwReq: CheckNSFWReq) {
         try {
             this.logger.log(`Received NSFW check request for videoId: ${checkNsfwReq.videoId}`)
 
