@@ -38,6 +38,7 @@ export class FfmpegService {
                 .on('start', (commandLine) => {
                     this.logger.log(`ffmpeg started with command: ${commandLine}`)
                 })
+                // eslint-disable-next-line @typescript-eslint/no-misused-promises
                 .on('end', async () => {
                     try {
                         this.logger.log(`Frame extraction completed`)
@@ -57,7 +58,6 @@ export class FfmpegService {
                 })
                 .on('error', (err) => {
                     this.logger.error(`Error extracting frames: ${err.message}`)
-                    // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
                     reject(err)
                 })
                 .run()
@@ -101,7 +101,6 @@ export class FfmpegService {
                 })
                 .on('error', (err) => {
                     this.logger.error(`Error extracting audio: ${err.message}`)
-                    // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
                     reject(err)
                 })
                 .run()
