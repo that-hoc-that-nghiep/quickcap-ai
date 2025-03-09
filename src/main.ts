@@ -7,7 +7,6 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
 import { initializeFfmpeg } from './utils/ffmpeg.helper'
 import * as tf from '@tensorflow/tfjs'
 import { MicroserviceOptions, Transport } from '@nestjs/microservices'
-import { QUEUE_NAME } from './utils/constant'
 
 async function bootstrap() {
     initializeFfmpeg()
@@ -30,12 +29,13 @@ async function bootstrap() {
         transport: Transport.RMQ,
         options: {
             urls: [rmqUrl],
-            queue: QUEUE_NAME,
+            queue: configService.get('QUEUE_NAME'),
             queueOptions: {
                 durable: true
             }
         }
     })
+    logger.log(`Connecting to RabbitMQ at queue: ${configService.get('QUEUE_NAME')}`)
 
     const config = new DocumentBuilder()
         .setTitle('Quickcap AI')

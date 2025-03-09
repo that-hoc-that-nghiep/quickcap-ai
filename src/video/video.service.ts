@@ -265,7 +265,7 @@ export class VideoService {
             }
 
             // Store result in cache
-            await this.cacheManager.set(cacheKey, nsswResult, DEFAULT_CACHE_TTL)
+            await this.cacheManager.set(cacheKey, nsswResult, DEFAULT_CACHE_TTL * 60 * 24)
 
             return nsswResult
         } catch (error) {
@@ -277,18 +277,19 @@ export class VideoService {
     private async processFramesWithNSFW(
         frameFiles: string[],
         model: nsfwjs.NSFWJS,
-        batchSize = 50
+        batchSize = 10 // Reduce batch size from 50 to 10
     ): Promise<nsfwjs.PredictionType[][]> {
         const predictions: nsfwjs.PredictionType[][] = []
 
-        // Process frames in batches to avoid memory issues
+        // Process frames in smaller batches with delays between batches
         for (let i = 0; i < frameFiles.length; i += batchSize) {
             const batch = frameFiles.slice(i, i + batchSize)
             this.logger.log(
                 `Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(frameFiles.length / batchSize)} (${batch.length} frames)`
             )
 
-            const batchPromises = batch.map(async (framePath) => {
+            // Process batch frames sequentially to reduce memory pressure
+            for (const framePath of batch) {
                 try {
                     // Load the image using tfjs-node
                     const imageTensor = await this.ffmpegService.convertImageToTensor(framePath)
@@ -299,19 +300,33 @@ export class VideoService {
                     // Clean up tensor to prevent memory leaks
                     imageTensor.dispose()
 
-                    return prediction
+                    predictions.push(prediction)
+
+                    // Remove the frame file immediately after processing to free disk space
+                    try {
+                        await fs.promises.unlink(framePath)
+                    } catch (unlinkError) {
+                        this.logger.warn(`Could not delete frame ${framePath}: ${unlinkError.message}`)
+                    }
                 } catch (error) {
                     this.logger.error(`Error processing frame ${framePath}: ${error.message}`)
-                    // Return empty array for failed frames
-                    return []
+                    // Continue with next frame
                 }
-            })
 
-            // Process this batch in parallel
-            const batchResults = await Promise.all(batchPromises)
+                // Add a small delay between frames to let the event loop breathe
+                await new Promise((resolve) => setTimeout(resolve, 50))
+            }
 
-            // Add results to main predictions array
-            predictions.push(...batchResults.filter((prediction) => prediction.length > 0))
+            // Add a longer delay between batches to allow event loop to process other tasks
+            // This gives RabbitMQ connection a chance to maintain its heartbeat
+            this.logger.log(`Completed batch ${Math.floor(i / batchSize) + 1}, pausing to maintain connections...`)
+            await new Promise((resolve) => setTimeout(resolve, 500))
+
+            // Force garbage collection if available (Node.js with --expose-gc flag)
+            if (global.gc) {
+                this.logger.log('Running garbage collection')
+                global.gc()
+            }
         }
 
         return predictions

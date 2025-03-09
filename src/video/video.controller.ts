@@ -175,7 +175,8 @@ export class VideoController {
 
     // Queue event handler for NSFW check
     @EventPattern('check-nsfw')
-    checkNSFWQueue(checkNsfwReq: CheckNSFWReq) {
+    @Post('test')
+    checkNSFWQueue(@Body() checkNsfwReq: CheckNSFWReq) {
         try {
             this.logger.log(`Received NSFW check request for videoId: ${checkNsfwReq.videoId}`)
 
@@ -195,15 +196,38 @@ export class VideoController {
 
     private async processNSFWCheckAndEmitResult(checkNsfwReq: CheckNSFWReq): Promise<void> {
         try {
+            // Log start of processing
+            this.logger.log(`Starting NSFW check for videoId: ${checkNsfwReq.videoId}`)
+
+            // Ensure RabbitMQ connection is active before starting the long process
+            if (!this.rabbitmqService.isConnected()) {
+                this.logger.warn(`RabbitMQ connection not active before NSFW check. Reconnecting...`)
+                await this.reconnectRabbitMQ()
+            }
+
             // Perform the actual NSFW check
             const result = await this.videoService.checkNSFW(checkNsfwReq)
 
             this.logger.log(`NSFW check completed for videoId: ${checkNsfwReq.videoId}. Emitting result.`)
 
-            // Emit the result to nsfw-result topic/queue
-            this.rabbitmqService.emitEvent('nsfw-result', result)
+            // Check connection again after the long-running process
+            if (!this.rabbitmqService.isConnected()) {
+                this.logger.warn(`RabbitMQ connection lost during NSFW check. Reconnecting...`)
+                await this.reconnectRabbitMQ()
+            }
 
-            this.logger.log(`NSFW result emitted for videoId: ${checkNsfwReq.videoId}`)
+            // Emit the result to nsfw-result topic/queue
+            try {
+                this.rabbitmqService.emitEvent('nsfw-result', result)
+                this.logger.log(`NSFW result emitted for videoId: ${checkNsfwReq.videoId}`)
+            } catch (emitError) {
+                this.logger.error(`Error emitting NSFW result: ${emitError.message}`)
+
+                // Last attempt with reconnection
+                await this.reconnectRabbitMQ()
+                this.rabbitmqService.emitEvent('nsfw-result', result)
+                this.logger.log(`NSFW result emitted after reconnection for videoId: ${checkNsfwReq.videoId}`)
+            }
         } catch (error) {
             this.logger.error('Error processing NSFW check:', {
                 message: error.message,
@@ -211,12 +235,36 @@ export class VideoController {
                 videoId: checkNsfwReq.videoId
             })
 
-            // Emit error result to maintain communication flow
-            this.rabbitmqService.emitEvent('nsfw-result', {
-                videoId: checkNsfwReq.videoId,
-                error: error.message,
-                status: 'failed'
-            })
+            // Check connection before emitting error result
+            try {
+                if (!this.rabbitmqService.isConnected()) {
+                    await this.reconnectRabbitMQ()
+                }
+
+                // Emit error result to maintain communication flow
+                this.rabbitmqService.emitEvent('nsfw-result', {
+                    videoId: checkNsfwReq.videoId,
+                    error: error.message,
+                    status: 'failed'
+                })
+            } catch (emitError) {
+                this.logger.error(`Failed to emit error result: ${emitError.message}`)
+            }
+        }
+    }
+
+    // Helper method to reconnect to RabbitMQ
+    private async reconnectRabbitMQ(): Promise<void> {
+        if (this.rabbitmqService.reconnect) {
+            try {
+                await this.rabbitmqService.reconnect()
+                this.logger.log('Successfully reconnected to RabbitMQ')
+            } catch (reconnectError) {
+                this.logger.error(`Failed to reconnect to RabbitMQ: ${reconnectError.message}`)
+                throw reconnectError
+            }
+        } else {
+            this.logger.warn('RabbitMQ reconnect method not available')
         }
     }
 }

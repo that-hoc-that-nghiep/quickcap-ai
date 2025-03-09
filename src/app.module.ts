@@ -16,6 +16,7 @@ import * as Joi from 'joi'
                 AWS_SECRET_ACCESS_KEY: Joi.string().required(),
                 AWS_REGION: Joi.string().default('ap-southeast-1'),
                 RABBITMQ_URL: Joi.string().required(),
+                QUEUE_NAME: Joi.string().default('quickcap'),
                 PORT: Joi.number().default(3000)
             })
         }),
