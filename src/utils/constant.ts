@@ -12,3 +12,4 @@ export const Env: Record<string, string> = {
 export const DEFAULT_CACHE_TTL = 60 * 1000
 
 export const SERVICE_NAME = 'quickcap-ai'
+export const SERVICE_NAME_2 = 'quickcap-nswf'
