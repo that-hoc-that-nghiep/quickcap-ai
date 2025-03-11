@@ -217,7 +217,7 @@ export class VideoController {
 
             // Emit the result to nsfw-result topic/queue
             try {
-                this.rabbitmqService.emitEvent('nsfw-result', result)
+                this.rabbitmqService.emitEvent('nsfw-result', result, true)
                 this.logger.log(`NSFW result emitted for videoId: ${checkNsfwReq.videoId}`)
             } catch (emitError) {
                 this.logger.error(`Error emitting NSFW result: ${emitError.message}`)
