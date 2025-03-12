@@ -100,7 +100,7 @@ export class VideoController {
 
                 // Last attempt with reconnection
                 await this.reconnectRabbitMQ()
-                this.rabbitmqService.emitEvent('transcribe-result', result)
+                this.rabbitmqService.emitEvent('transcribe-result', result, true)
                 this.logger.log(`Transcription result emitted after reconnection for videoId: ${transcribeReq.videoId}`)
             }
         } catch (error) {
@@ -288,7 +288,7 @@ export class VideoController {
 
                 // Last attempt with reconnection
                 await this.reconnectRabbitMQ()
-                this.rabbitmqService.emitEvent('nsfw-result', result)
+                this.rabbitmqService.emitEvent('nsfw-result', result, true)
                 this.logger.log(`NSFW result emitted after reconnection for videoId: ${checkNsfwReq.videoId}`)
             }
         } catch (error) {
