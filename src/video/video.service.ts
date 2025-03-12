@@ -111,7 +111,12 @@ export class VideoService {
             await this.cleanupTempVideoFiles(tempVideoPath)
             await this.cleanupTempAudioFiles(tempAudioPath)
 
-            return { transcript: transcription }
+            return {
+                userId: transcribeReq.userId,
+                orgId: transcribeReq.orgId,
+                videoUrl: transcribeReq.videoUrl,
+                transcript: transcription
+            }
         } catch (error) {
             this.logger.error(`Error generate transcript: ${error.message}`)
             throw new InternalServerErrorException(`Failed to process generate transcript: ${error.message}`)
