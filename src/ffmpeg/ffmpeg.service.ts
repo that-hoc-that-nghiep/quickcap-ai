@@ -18,6 +18,15 @@ export class FfmpegService {
         } else {
             this.logger.warn('ffmpeg-static path not found, using system ffmpeg if available')
         }
+
+        // Initialize TensorFlow.js
+        tf.ready()
+            .then(() => {
+                this.logger.log('TensorFlow.js initialized')
+            })
+            .catch((err) => {
+                this.logger.error(`Failed to initialize TensorFlow.js: ${err.message}`)
+            })
     }
 
     async extractFrames(videoPath: string, outputDir: string): Promise<string[]> {
@@ -71,12 +80,15 @@ export class FfmpegService {
 
         const numChannels = 3
         const numPixels = image.width * image.height
-        const values = new Int32Array(numPixels * numChannels)
+        const values = new Float32Array(numPixels * numChannels)
 
-        for (let i = 0; i < numPixels; i++)
-            for (let c = 0; c < numChannels; ++c) values[i * numChannels + c] = image.data[i * 4 + c]
+        for (let i = 0; i < numPixels; i++) {
+            for (let c = 0; c < numChannels; ++c) {
+                values[i * numChannels + c] = image.data[i * 4 + c] / 255.0
+            }
+        }
 
-        return tf.tensor3d(values, [image.height, image.width, numChannels], 'int32')
+        return tf.tensor3d(values, [image.height, image.width, numChannels], 'float32')
     }
 
     async extractAudio(videoPath: string, audioOutputPath: string): Promise<void> {

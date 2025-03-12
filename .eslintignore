@@ -1,0 +1,6 @@
+# Ignore JavaScript files in worker threads
+src/worker-threads/worker.js
+dist/
+copy-worker.js
+copy-worker-dev.js
+node_modules/

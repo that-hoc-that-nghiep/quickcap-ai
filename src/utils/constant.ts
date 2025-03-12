@@ -1,3 +1,5 @@
+import * as path from 'path'
+
 export const Env: Record<string, string> = {
     OPENAI_API_KEY: 'OPENAI_API_KEY',
     OPENAI_API_URL: 'OPENAI_API_URL',
@@ -8,8 +10,11 @@ export const Env: Record<string, string> = {
     QUEUE_NAME: 'QUEUE_NAME'
 }
 
+// Add worker path to environment variables
+export const WORKER_PATH = path.join(process.cwd(), 'dist', 'worker-threads', 'worker.js')
+
 // cache 10s
-export const DEFAULT_CACHE_TTL = 60 * 1000
+export const DEFAULT_CACHE_TTL = 60 * 60 * 3 // 3 hours
 
 export const SERVICE_NAME = 'quickcap-ai'
 export const SERVICE_NAME_2 = 'quickcap-nswf'

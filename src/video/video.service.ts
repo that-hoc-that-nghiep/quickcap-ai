@@ -14,10 +14,17 @@ import * as nsfwjs from 'nsfwjs'
 import { CACHE_MANAGER } from '@nestjs/cache-manager'
 import { Cache } from 'cache-manager'
 import { createHash } from 'crypto'
-import { S3Service } from 'src/s3/s3.service'
 import * as path from 'path'
 import { FfmpegService } from 'src/ffmpeg/ffmpeg.service'
 import { TranscribeReq } from './dto/transcribe-req'
+import {
+    WorkerThreadsService,
+    NSFWWorkerResult,
+    DownloadWorkerResult,
+    ExtractFramesWorkerResult
+} from 'src/worker-threads/worker-threads.service'
+import { ConfigService } from '@nestjs/config'
+import { Env } from 'src/utils/constant'
 
 @Injectable()
 export class VideoService {
@@ -26,8 +33,9 @@ export class VideoService {
     constructor(
         @Inject(CACHE_MANAGER) private cacheManager: Cache,
         private readonly aiService: AiService,
-        private readonly s3Service: S3Service,
-        private readonly ffmpegService: FfmpegService
+        private readonly ffmpegService: FfmpegService,
+        private readonly workerThreadsService: WorkerThreadsService,
+        private readonly configService: ConfigService<typeof Env, true>
     ) {}
 
     private generateCacheKey(prefix: string, data: any): string {
@@ -50,7 +58,7 @@ export class VideoService {
         try {
             this.logger.log(`Transcribing video: ${videoUrl}`)
 
-            // Download the video from S3
+            // Create temporary directories for processing
             const tempDir = path.join(process.cwd(), 'temp')
             await fs.promises.mkdir(tempDir, { recursive: true })
 
@@ -58,10 +66,30 @@ export class VideoService {
             const tempVideoPath = path.join(tempDir, `${soundId}.mp4`)
             const tempAudioPath = path.join(tempDir, `${soundId}.wav`)
 
-            await this.s3Service.downloadFromS3(videoUrl, tempVideoPath)
+            // Download the video from S3 using worker thread
+            await this.workerThreadsService.runTask<DownloadWorkerResult>({
+                type: 'download',
+                data: {
+                    videoUrl,
+                    outputPath: tempVideoPath,
+                    region: this.configService.get('AWS_REGION'),
+                    accessKeyId: this.configService.get('AWS_ACCESS_KEY_ID'),
+                    secretAccessKey: this.configService.get('AWS_SECRET_ACCESS_KEY')
+                }
+            })
+
             this.logger.log(`Video downloaded to ${tempVideoPath}`)
 
-            await this.ffmpegService.extractAudio(tempVideoPath, tempAudioPath)
+            // Use worker thread to extract audio
+            await this.workerThreadsService.runTask({
+                type: 'transcribe',
+                data: {
+                    videoPath: tempVideoPath,
+                    audioPath: tempAudioPath
+                }
+            })
+
+            this.logger.log(`Audio extracted to ${tempAudioPath}`)
 
             const whisperLoader = this.aiService.getWhisperLoader(tempAudioPath)
 
@@ -226,7 +254,6 @@ export class VideoService {
         }
 
         const { videoUrl, videoId: originVideoId } = checkNsfwReq
-        const checkModel = await this.aiService.getNSFWDetectModel()
 
         try {
             this.logger.log(`Processing video for NSFW content: ${videoUrl}`)
@@ -240,21 +267,59 @@ export class VideoService {
             const framesDir = path.join(tempDir, `${videoId}-frames`)
             await fs.promises.mkdir(framesDir, { recursive: true })
 
-            // Download the video from S3
-            await this.s3Service.downloadFromS3(videoUrl, tempVideoPath)
+            // Download the video from S3 using worker thread
+            await this.workerThreadsService.runTask<DownloadWorkerResult>({
+                type: 'download',
+                data: {
+                    videoUrl,
+                    outputPath: tempVideoPath,
+                    region: this.configService.get('AWS_REGION'),
+                    accessKeyId: this.configService.get('AWS_ACCESS_KEY_ID'),
+                    secretAccessKey: this.configService.get('AWS_SECRET_ACCESS_KEY')
+                }
+            })
+
             this.logger.log(`Video downloaded to ${tempVideoPath}`)
 
-            // Extract frames from the video
-            const frameFiles = await this.ffmpegService.extractFrames(tempVideoPath, framesDir)
+            // Extract frames from the video using worker thread
+            const extractResult = await this.workerThreadsService.runTask<ExtractFramesWorkerResult>({
+                type: 'extractFrames',
+                data: {
+                    videoPath: tempVideoPath,
+                    outputDir: framesDir
+                }
+            })
+
+            const frameFiles = extractResult.frameFiles
             this.logger.log(`Extracted ${frameFiles.length} frames for analysis`)
 
-            // Process frames with NSFW detection
-            const predictions = await this.processFramesWithNSFW(frameFiles, checkModel)
+            // Process frames with worker threads in batches to avoid memory issues
+            const batchSize = 20
+            const predictions: nsfwjs.PredictionType[][] = []
+
+            for (let i = 0; i < frameFiles.length; i += batchSize) {
+                const batchFrames = frameFiles.slice(i, i + batchSize)
+                this.logger.log(
+                    `Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(frameFiles.length / batchSize)}`
+                )
+
+                const batchResult = await this.workerThreadsService.runTask<NSFWWorkerResult>({
+                    type: 'nsfw',
+                    data: { frameFiles: batchFrames }
+                })
+
+                predictions.push(...batchResult.predictions)
+
+                // Add a small delay between batches
+                if (i + batchSize < frameFiles.length) {
+                    await new Promise((resolve) => setTimeout(resolve, 200))
+                }
+            }
 
             // Analyze the results
             const result = this.analyzeNSFWPredictions(predictions)
 
-            // Clean up temporary files
+            // Clean up temporary video file
             await this.cleanupTempVideoFiles(tempVideoPath, framesDir)
 
             const nsswResult = {

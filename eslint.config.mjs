@@ -6,7 +6,13 @@ import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
     {
-        ignores: ['eslint.config.mjs']
+        ignores: [
+            'eslint.config.mjs',
+            'copy-worker.js',
+            'copy-worker-dev.js', // Add this line to ignore the dev copy script
+            'src/worker-threads/worker.js',
+            'dist/**/*.js'
+        ]
     },
     eslint.configs.recommended,
     ...tseslint.configs.recommendedTypeChecked,

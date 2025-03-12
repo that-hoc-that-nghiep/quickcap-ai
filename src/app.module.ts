@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config'
 import { LoggerModule } from 'nestjs-pino'
 import { CacheModule } from '@nestjs/cache-manager'
 import * as Joi from 'joi'
+import { WorkerThreadsModule } from './worker-threads/worker-threads.module'
 
 @Module({
     imports: [
@@ -33,7 +34,8 @@ import * as Joi from 'joi'
         CacheModule.register({
             isGlobal: true
         }),
-        VideoModule
+        VideoModule,
+        WorkerThreadsModule
     ],
     controllers: [],
     providers: []
