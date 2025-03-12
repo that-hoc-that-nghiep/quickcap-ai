@@ -4,9 +4,14 @@ import { IsString } from 'class-validator'
 export class TranscribeReq {
     @ApiProperty()
     @IsString()
-    videoId: string
+    userId: string
+
+    @ApiProperty()
+    @IsString()
+    orgId: string
 
     @ApiProperty()
     @IsString()
     videoUrl: string
 }
+ 
