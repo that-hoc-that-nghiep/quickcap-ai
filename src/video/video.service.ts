@@ -113,9 +113,6 @@ export class VideoService {
             await this.cleanupTempAudioFiles(tempAudioPath)
 
             return {
-                userId: transcribeReq.userId,
-                orgId: transcribeReq.orgId,
-                videoUrl: transcribeReq.videoUrl,
                 transcript: transcription
             }
         } catch (error) {
