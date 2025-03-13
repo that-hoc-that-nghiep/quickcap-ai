@@ -3,7 +3,7 @@ import { IsEnum, IsString } from 'class-validator'
 
 export enum Role {
     USER = 'user',
-    BOT = 'bot'
+    AI = 'ai'
 }
 
 export class Message {
@@ -17,5 +17,5 @@ export class Message {
 
     @ApiProperty()
     @IsString()
-    text: string
+    content: string
 }
