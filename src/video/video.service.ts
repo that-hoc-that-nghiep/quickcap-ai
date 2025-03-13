@@ -162,7 +162,7 @@ export class VideoService {
                 `
                 You are an AI assistant that helps content creators optimize their videos.
                 
-                Based on user's video transcript and current categories list, analyze the content and provide metadata.
+                Based on user's video transcript and current categories list, analyze the content and provide metadata. The output language should match the transcript language.
                 
                 For the category selection:
                 1. First evaluate if the transcript content matches ANY of the provided categories
@@ -218,7 +218,7 @@ export class VideoService {
                 `You are an AI assistant that helps users understand video content.
                 You will be provided with a video transcript and a conversation history.
                 Use both the transcript and conversation history as context to answer the user's latest question.
-                Maintain a helpful, conversational tone and be concise in your responses.
+                Maintain a helpful, conversational tone and be concise in your responses. The output language should match the user's question language.
                 If the answer is not available in the transcript or previous conversation, say so politely.
                 
                 {transcript}
@@ -340,64 +340,6 @@ export class VideoService {
             this.logger.error(`Error checking NSFW content: ${error.message}`)
             throw new InternalServerErrorException(`Failed to process video for NSFW content: ${error.message}`)
         }
-    }
-
-    private async processFramesWithNSFW(
-        frameFiles: string[],
-        model: nsfwjs.NSFWJS,
-        batchSize = 10 // Reduce batch size from 50 to 10
-    ): Promise<nsfwjs.PredictionType[][]> {
-        const predictions: nsfwjs.PredictionType[][] = []
-
-        // Process frames in smaller batches with delays between batches
-        for (let i = 0; i < frameFiles.length; i += batchSize) {
-            const batch = frameFiles.slice(i, i + batchSize)
-            this.logger.log(
-                `Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(frameFiles.length / batchSize)} (${batch.length} frames)`
-            )
-
-            // Process batch frames sequentially to reduce memory pressure
-            for (const framePath of batch) {
-                try {
-                    // Load the image using tfjs-node
-                    const imageTensor = await this.ffmpegService.convertImageToTensor(framePath)
-
-                    // Classify the image using NSFW model
-                    const prediction = await model.classify(imageTensor)
-
-                    // Clean up tensor to prevent memory leaks
-                    imageTensor.dispose()
-
-                    predictions.push(prediction)
-
-                    // Remove the frame file immediately after processing to free disk space
-                    try {
-                        await fs.promises.unlink(framePath)
-                    } catch (unlinkError) {
-                        this.logger.warn(`Could not delete frame ${framePath}: ${unlinkError.message}`)
-                    }
-                } catch (error) {
-                    this.logger.error(`Error processing frame ${framePath}: ${error.message}`)
-                    // Continue with next frame
-                }
-
-                // Add a small delay between frames to let the event loop breathe
-                await new Promise((resolve) => setTimeout(resolve, 50))
-            }
-
-            // Add a longer delay between batches to allow event loop to process other tasks
-            // This gives RabbitMQ connection a chance to maintain its heartbeat
-            this.logger.log(`Completed batch ${Math.floor(i / batchSize) + 1}, pausing to maintain connections...`)
-            await new Promise((resolve) => setTimeout(resolve, 500))
-
-            // Force garbage collection if available (Node.js with --expose-gc flag)
-            if (global.gc) {
-                this.logger.log('Running garbage collection')
-                global.gc()
-            }
-        }
-
-        return predictions
     }
 
     private analyzeNSFWPredictions(predictions: nsfwjs.PredictionType[][]): {
