@@ -50,16 +50,12 @@ export class VideoController {
     }
 
     // Queue event handler for transcription
-    @EventPattern('transcribe')
-    transcribeQueue(transcribeReq: TranscribeReq) {
+    @MessagePattern({ cmd: 'transcribe' })
+    async transcribeQueue(transcribeReq: TranscribeReq) {
         try {
             this.logger.log(`Received transcribe request for videoUrl: ${transcribeReq.videoUrl}`)
 
-            // Process asynchronously - don't await
-            this.processTranscribeAndEmitResult(transcribeReq)
-
-            // Return immediately as this is fire-and-forget
-            this.logger.log(`Transcribe request queued for processing: ${transcribeReq.videoUrl}`)
+            return await this.videoService.generateTranscribe(transcribeReq)
         } catch (error) {
             this.logger.error('Error queuing transcribe request:', {
                 message: error.message,
@@ -69,66 +65,66 @@ export class VideoController {
         }
     }
 
-    private async processTranscribeAndEmitResult(transcribeReq: TranscribeReq): Promise<void> {
-        try {
-            // Log start of processing
-            this.logger.log(`Starting transcription for videoUrl: ${transcribeReq.videoUrl}`)
+    // private async processTranscribeAndEmitResult(transcribeReq: TranscribeReq): Promise<void> {
+    //     try {
+    //         // Log start of processing
+    //         this.logger.log(`Starting transcription for videoUrl: ${transcribeReq.videoUrl}`)
 
-            // Ensure RabbitMQ connection is active before starting the process
-            if (!this.rabbitmqService.isConnected()) {
-                this.logger.warn(`RabbitMQ connection not active before transcription. Reconnecting...`)
-                await this.reconnectRabbitMQ()
-            }
+    //         // Ensure RabbitMQ connection is active before starting the process
+    //         if (!this.rabbitmqService.isConnected()) {
+    //             this.logger.warn(`RabbitMQ connection not active before transcription. Reconnecting...`)
+    //             await this.reconnectRabbitMQ()
+    //         }
 
-            // Perform the actual transcription
-            const result = await this.videoService.generateTranscribe(transcribeReq)
+    //         // Perform the actual transcription
+    //         const result = await this.videoService.generateTranscribe(transcribeReq)
 
-            this.logger.log(`Transcription completed for videoUrl: ${transcribeReq.videoUrl}. Emitting result.`)
+    //         this.logger.log(`Transcription completed for videoUrl: ${transcribeReq.videoUrl}. Emitting result.`)
 
-            // Check connection again after the long-running process
-            if (!this.rabbitmqService.isConnected()) {
-                this.logger.warn(`RabbitMQ connection lost during transcription. Reconnecting...`)
-                await this.reconnectRabbitMQ()
-            }
+    //         // Check connection again after the long-running process
+    //         if (!this.rabbitmqService.isConnected()) {
+    //             this.logger.warn(`RabbitMQ connection lost during transcription. Reconnecting...`)
+    //             await this.reconnectRabbitMQ()
+    //         }
 
-            // Emit the result to transcribe-result topic/queue
-            try {
-                this.rabbitmqService.emitEvent('transcribe-result', result, true)
-                this.logger.log(`Transcription result emitted for videoUrl: ${transcribeReq.videoUrl}`)
-            } catch (emitError) {
-                this.logger.error(`Error emitting transcription result: ${emitError.message}`)
+    //         // Emit the result to transcribe-result topic/queue
+    //         try {
+    //             this.rabbitmqService.emitEvent('transcribe-result', result, true)
+    //             this.logger.log(`Transcription result emitted for videoUrl: ${transcribeReq.videoUrl}`)
+    //         } catch (emitError) {
+    //             this.logger.error(`Error emitting transcription result: ${emitError.message}`)
 
-                // Last attempt with reconnection
-                await this.reconnectRabbitMQ()
-                this.rabbitmqService.emitEvent('transcribe-result', result, true)
-                this.logger.log(
-                    `Transcription result emitted after reconnection for videoUrl: ${transcribeReq.videoUrl}`
-                )
-            }
-        } catch (error) {
-            this.logger.error('Error processing transcription:', {
-                message: error.message,
-                stack: error.stack,
-                videoId: transcribeReq.videoUrl
-            })
+    //             // Last attempt with reconnection
+    //             await this.reconnectRabbitMQ()
+    //             this.rabbitmqService.emitEvent('transcribe-result', result, true)
+    //             this.logger.log(
+    //                 `Transcription result emitted after reconnection for videoUrl: ${transcribeReq.videoUrl}`
+    //             )
+    //         }
+    //     } catch (error) {
+    //         this.logger.error('Error processing transcription:', {
+    //             message: error.message,
+    //             stack: error.stack,
+    //             videoId: transcribeReq.videoUrl
+    //         })
 
-            // Check connection before emitting error result
-            try {
-                if (!this.rabbitmqService.isConnected()) {
-                    await this.reconnectRabbitMQ()
-                }
+    //         // Check connection before emitting error result
+    //         try {
+    //             if (!this.rabbitmqService.isConnected()) {
+    //                 await this.reconnectRabbitMQ()
+    //             }
 
-                // Emit error result to maintain communication flow
-                this.rabbitmqService.emitEvent('transcribe-result', {
-                    videoId: transcribeReq.videoUrl,
-                    error: error.message,
-                    status: 'failed'
-                })
-            } catch (emitError) {
-                this.logger.error(`Failed to emit transcription error result: ${emitError.message}`)
-            }
-        }
-    }
+    //             // Emit error result to maintain communication flow
+    //             this.rabbitmqService.emitEvent('transcribe-result', {
+    //                 videoId: transcribeReq.videoUrl,
+    //                 error: error.message,
+    //                 status: 'failed'
+    //             })
+    //         } catch (emitError) {
+    //             this.logger.error(`Failed to emit transcription error result: ${emitError.message}`)
+    //         }
+    //     }
+    // }
 
     // HTTP API endpoint for video data generation
     @Post('video-data')

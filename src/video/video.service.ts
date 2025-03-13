@@ -25,6 +25,7 @@ import {
 } from 'src/worker-threads/worker-threads.service'
 import { ConfigService } from '@nestjs/config'
 import { Env } from 'src/utils/constant'
+import { TranscribeRes } from './dto/transcribe-res'
 
 @Injectable()
 export class VideoService {
@@ -43,14 +44,14 @@ export class VideoService {
         return `${prefix}_${hash}`
     }
 
-    async generateTranscribe(transcribeReq: TranscribeReq) {
+    async generateTranscribe(transcribeReq: TranscribeReq): Promise<TranscribeRes> {
         const cacheKey = this.generateCacheKey('transcribe', transcribeReq)
 
         // Try to get from cache
         const cachedResult = await this.cacheManager.get(cacheKey)
         if (cachedResult) {
             this.logger.log(`Retrieved transcript from cache with key: ${cacheKey}`)
-            return cachedResult
+            return cachedResult as TranscribeRes
         }
 
         const { videoUrl } = transcribeReq
