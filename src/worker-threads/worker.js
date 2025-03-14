@@ -114,7 +114,7 @@ async function processFramesForNSFW(frameFiles) {
     // Load NSFW model if not already loaded
     if (!nsfwModel) {
         console.log('Loading NSFW model...')
-        nsfwModel = await nsfwjs.load("InceptionV3")
+        nsfwModel = await nsfwjs.load("MobileNetV2Mid")
         console.log('NSFW model loaded successfully')
     }
 
