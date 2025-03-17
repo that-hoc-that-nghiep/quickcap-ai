@@ -26,6 +26,7 @@ import {
 import { ConfigService } from '@nestjs/config'
 import { Env } from 'src/utils/constant'
 import { TranscribeRes } from './dto/transcribe-res'
+import { CategorySuggestReq } from './dto/category-suggest-req'
 
 @Injectable()
 export class VideoService {
@@ -131,16 +132,68 @@ export class VideoService {
             return cachedResult
         }
 
-        const { transcript, categories } = generateVideoDataReq
+        const { transcript } = generateVideoDataReq
 
-        const videoDataResSchema = z
+        const categorySuggestResSchema = z
             .object({
                 title: z
                     .optional(z.string())
                     .describe('A catchy and descriptive title for the video, maximum 100 characters'),
                 description: z
                     .optional(z.string())
-                    .describe('A detailed description of the video content that highlights key points, 2-3 paragraphs'),
+                    .describe('A detailed description of the video content that highlights key points, 2-3 paragraphs')
+            })
+            .describe('The response from the AI model for generating video data')
+
+        const parser = StructuredOutputParser.fromZodSchema(categorySuggestResSchema)
+
+        const prompt = ChatPromptTemplate.fromMessages([
+            [
+                'system',
+                `
+                You are an AI assistant that helps content creators optimize their videos.
+                
+                Based on user's video transcript and current categories list, analyze the content and provide metadata. The output language should match the transcript language.
+                
+                Wrap the output in \`json\` tags\n{format_instructions}`
+            ],
+            ['user', '{transcript}']
+        ])
+
+        const partialedPrompt = await prompt.partial({
+            format_instructions: parser.getFormatInstructions()
+        })
+
+        const llm = this.aiService.getLLM()
+
+        const chain = partialedPrompt.pipe(llm).pipe(parser)
+
+        const res = await chain.invoke({
+            transcript
+        })
+
+        this.logger.log(`Generated video data: ${JSON.stringify(res)}`)
+
+        // Store result in cache
+        await this.cacheManager.set(cacheKey, res, DEFAULT_CACHE_TTL)
+
+        return res
+    }
+
+    async categorySuggest(categorySuggestReq: CategorySuggestReq) {
+        const cacheKey = this.generateCacheKey('category_suggest', categorySuggestReq)
+
+        // Try to get from cache
+        const cachedResult = await this.cacheManager.get(cacheKey)
+        if (cachedResult) {
+            this.logger.log(`Retrieved category suggest from cache with key: ${cacheKey}`)
+            return cachedResult
+        }
+
+        const { transcript, categories } = categorySuggestReq
+
+        const categorySuggestResSchema = z
+            .object({
                 category: z
                     .optional(z.string())
                     .describe(
@@ -154,7 +207,7 @@ export class VideoService {
             })
             .describe('The response from the AI model for generating video data')
 
-        const parser = StructuredOutputParser.fromZodSchema(videoDataResSchema)
+        const parser = StructuredOutputParser.fromZodSchema(categorySuggestResSchema)
 
         const prompt = ChatPromptTemplate.fromMessages([
             [
@@ -191,7 +244,7 @@ export class VideoService {
             categories
         })
 
-        this.logger.log(`Generated video data: ${JSON.stringify(res)}`)
+        this.logger.log(`Generated category suggest: ${JSON.stringify(res)}`)
 
         // Store result in cache
         await this.cacheManager.set(cacheKey, res, DEFAULT_CACHE_TTL)

@@ -12,6 +12,7 @@ import { TranscribeRes } from './dto/transcribe-res'
 import { TranscribeReq } from './dto/transcribe-req'
 import { EventPattern, MessagePattern } from '@nestjs/microservices'
 import { RabbitmqService } from 'src/rabbitmq/rabbitmq.service'
+import { CategorySuggestReq } from './dto/category-suggest-req'
 
 @ApiTags('video')
 @Controller('video')
@@ -160,6 +161,19 @@ export class VideoController {
             return await this.videoService.generateVideoData(generateVideoDataReq)
         } catch (error) {
             this.logger.error('Create video metadata queue error:', {
+                message: error.message,
+                stack: error.stack
+            })
+            throw error
+        }
+    }
+
+    @MessagePattern({ cmd: 'category-suggest' })
+    async categorySuggestQueue(categorySuggestReq: CategorySuggestReq) {
+        try {
+            return await this.videoService.categorySuggest(categorySuggestReq)
+        } catch (error) {
+            this.logger.error('Category suggestion queue error:', {
                 message: error.message,
                 stack: error.stack
             })

@@ -1,9 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger'
 
-export class GenerateVideoDataRes {
+export class CategorySuggestRes {
     @ApiProperty()
-    title: string
+    category: string
 
     @ApiProperty()
-    description: string
+    isNewCategory: boolean
 }
