@@ -14,7 +14,7 @@ async function initModules() {
     try {
         ffmpegStatic = require('ffmpeg-static')
         ffmpeg = require('fluent-ffmpeg')
-        tf = require('@tensorflow/tfjs') // Changed from @tensorflow/tfjs-node to @tensorflow/tfjs
+        tf = require('@tensorflow/tfjs-node')
         jpeg = require('jpeg-js')
         nsfwjs = require('nsfwjs')
 

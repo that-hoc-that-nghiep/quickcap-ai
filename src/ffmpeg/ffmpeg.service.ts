@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import * as ffmpeg from 'fluent-ffmpeg'
 import * as path from 'path'
 import * as fs from 'fs'
-import * as tf from '@tensorflow/tfjs'
+import * as tf from '@tensorflow/tfjs-node'
 import * as jpeg from 'jpeg-js'
 import ffmpegPath from 'ffmpeg-static'
 

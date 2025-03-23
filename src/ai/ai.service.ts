@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config'
 import { Env } from 'src/utils/constant'
 import { ChatOpenAI } from '@langchain/openai'
 import * as nsfwjs from 'nsfwjs'
-import * as tf from '@tensorflow/tfjs' // Changed from @tensorflow/tfjs-node to @tensorflow/tfjs
+import * as tf from '@tensorflow/tfjs-node'
 
 const AI_MODEL = 'gpt-4o'
 
