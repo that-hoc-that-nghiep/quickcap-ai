@@ -38,8 +38,7 @@ import { join } from 'path'
         }),
         ServeStaticModule.forRoot({
             rootPath: join(__dirname, '..', 'public'),
-            serveRoot: '/public',
-            exclude: ['/api*']
+            serveRoot: '/',
         }),
         VideoModule,
         WorkerThreadsModule

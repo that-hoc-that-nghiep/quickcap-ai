@@ -7,7 +7,6 @@
         "assets": [
             {
                 "include": "../public",
-                "exclude": "../public/model/**/*",
                 "outDir": "dist/public"
             }
         ],
