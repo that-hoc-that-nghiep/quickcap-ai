@@ -116,7 +116,7 @@ async function processFramesForNSFW(frameFiles) {
     // Load NSFW model if not already loaded
     if (!nsfwModel) {
         console.log('Loading NSFW model...')
-        nsfwModel = await nsfwjs.load('http://localhost:8000/model/', { size: 224 })
+        nsfwModel = await nsfwjs.load('http://localhost:8000/public/model/', { size: 224 })
         console.log('NSFW model loaded successfully')
     }
 
