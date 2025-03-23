@@ -227,7 +227,7 @@ async function extractFrames(videoPath, outputDir) {
             .outputOptions([
                 // Extract every 12th frame and resize to 360p height
                 '-vf',
-                'select=not(mod(n\\,12)),scale=-1:720',
+                'select=not(mod(n\\,12)),scale=-1:360',
                 '-vsync',
                 'vfr', // Variable framerate for selected frames
                 '-q:v',
