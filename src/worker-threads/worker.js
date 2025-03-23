@@ -116,7 +116,7 @@ async function processFramesForNSFW(frameFiles) {
     // Load NSFW model if not already loaded
     if (!nsfwModel) {
         console.log('Loading NSFW model...')
-        nsfwModel = await nsfwjs.load("https://ai.quickcap.live/model/model.json")
+        nsfwModel = await nsfwjs.load("https://raw.githubusercontent.com/infinitered/nsfwjs/refs/heads/master/models/mobilenet_v2/model.json")
         console.log('NSFW model loaded successfully')
     }
 

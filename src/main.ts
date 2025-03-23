@@ -8,13 +8,11 @@ import { initializeFfmpeg } from './utils/ffmpeg.helper'
 import * as tf from '@tensorflow/tfjs-node'
 import { MicroserviceOptions, Transport } from '@nestjs/microservices'
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { join } from 'path';
 
 async function bootstrap() {
     initializeFfmpeg()
 
     const app = await NestFactory.create<NestExpressApplication>(AppModule)
-    app.useStaticAssets(join(__dirname, '..', 'public'));
     app.useGlobalPipes(
         new ValidationPipe({
             whitelist: true,
