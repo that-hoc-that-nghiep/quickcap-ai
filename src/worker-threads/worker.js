@@ -1,3 +1,4 @@
+require('dotenv').config()
 const { parentPort } = require('worker_threads')
 const fs = require('fs')
 const path = require('path')
@@ -25,6 +26,7 @@ async function initModules() {
 
         // Initialize TensorFlow.js
         await tf.ready()
+        tf.env().set('PROD', true) // Disable logs
         console.log('TensorFlow.js initialized in pure JS mode')
 
         console.log('Modules initialized successfully')
@@ -114,7 +116,7 @@ async function processFramesForNSFW(frameFiles) {
     // Load NSFW model if not already loaded
     if (!nsfwModel) {
         console.log('Loading NSFW model...')
-        nsfwModel = await nsfwjs.load()
+        nsfwModel = await nsfwjs.load('http://localhost:8000/model/', { size: 224 })
         console.log('NSFW model loaded successfully')
     }
 

@@ -5,6 +5,8 @@ import { LoggerModule } from 'nestjs-pino'
 import { CacheModule } from '@nestjs/cache-manager'
 import * as Joi from 'joi'
 import { WorkerThreadsModule } from './worker-threads/worker-threads.module'
+import { ServeStaticModule } from '@nestjs/serve-static'
+import { join } from 'path'
 
 @Module({
     imports: [
@@ -33,6 +35,11 @@ import { WorkerThreadsModule } from './worker-threads/worker-threads.module'
         }),
         CacheModule.register({
             isGlobal: true
+        }),
+        ServeStaticModule.forRoot({
+            rootPath: join(__dirname, '..', 'public'),
+            serveRoot: '/public',
+            exclude: ['/api*']
         }),
         VideoModule,
         WorkerThreadsModule
