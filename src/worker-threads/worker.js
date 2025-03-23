@@ -225,9 +225,9 @@ async function extractFrames(videoPath, outputDir) {
 
         ffmpeg(videoPath)
             .outputOptions([
-                // Extract every 12th frame and resize to 360p height
+                // Extract every 12th frame and resize to 480p height
                 '-vf',
-                'select=not(mod(n\\,12)),scale=-1:360',
+                'select=not(mod(n\\,12)),scale=-1:480',
                 '-vsync',
                 'vfr', // Variable framerate for selected frames
                 '-q:v',
@@ -271,20 +271,6 @@ async function convertImageToTensor(imagePath) {
 
     try {
         const imageBuffer = fs.readFileSync(imagePath)
-        // const image = jpeg.decode(imageBuffer, { useTArray: true })
-
-        // Create a tensor from the decoded image data
-        // const numChannels = 3
-        // const numPixels = image.width * image.height
-        // const values = new Float32Array(numPixels * numChannels) // Changed to Float32Array for better compatibility
-
-        // for (let i = 0; i < numPixels; i++) {
-        //     for (let c = 0; c < numChannels; ++c) {
-        //         values[i * numChannels + c] = image.data[i * 4 + c] / 255.0 // Normalize to [0,1] range
-        //     }
-        // }
-
-        // return tf.tensor3d(values, [image.height, image.width, numChannels], 'float32')
         return tf.node.decodeImage(imageBuffer, 3)
     } catch (error) {
         console.error(`Error converting image to tensor: ${error.message}`)
