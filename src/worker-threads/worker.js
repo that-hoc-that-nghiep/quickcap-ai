@@ -116,7 +116,7 @@ async function processFramesForNSFW(frameFiles) {
     // Load NSFW model if not already loaded
     if (!nsfwModel) {
         console.log('Loading NSFW model...')
-        nsfwModel = await nsfwjs.load("https://raw.githubusercontent.com/infinitered/nsfwjs/refs/heads/master/models/mobilenet_v2/model.json")
+        nsfwModel = await nsfwjs.load()
         console.log('NSFW model loaded successfully')
     }
 
@@ -271,20 +271,21 @@ async function convertImageToTensor(imagePath) {
 
     try {
         const imageBuffer = fs.readFileSync(imagePath)
-        const image = jpeg.decode(imageBuffer, { useTArray: true })
+        // const image = jpeg.decode(imageBuffer, { useTArray: true })
 
         // Create a tensor from the decoded image data
-        const numChannels = 3
-        const numPixels = image.width * image.height
-        const values = new Float32Array(numPixels * numChannels) // Changed to Float32Array for better compatibility
+        // const numChannels = 3
+        // const numPixels = image.width * image.height
+        // const values = new Float32Array(numPixels * numChannels) // Changed to Float32Array for better compatibility
 
-        for (let i = 0; i < numPixels; i++) {
-            for (let c = 0; c < numChannels; ++c) {
-                values[i * numChannels + c] = image.data[i * 4 + c] / 255.0 // Normalize to [0,1] range
-            }
-        }
+        // for (let i = 0; i < numPixels; i++) {
+        //     for (let c = 0; c < numChannels; ++c) {
+        //         values[i * numChannels + c] = image.data[i * 4 + c] / 255.0 // Normalize to [0,1] range
+        //     }
+        // }
 
-        return tf.tensor3d(values, [image.height, image.width, numChannels], 'float32')
+        // return tf.tensor3d(values, [image.height, image.width, numChannels], 'float32')
+        return tf.node.decodeImage(imageBuffer, 3)
     } catch (error) {
         console.error(`Error converting image to tensor: ${error.message}`)
         throw error
