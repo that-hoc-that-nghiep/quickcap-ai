@@ -7,7 +7,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
 import { initializeFfmpeg } from './utils/ffmpeg.helper'
 import * as tf from '@tensorflow/tfjs-node'
 import { MicroserviceOptions, Transport } from '@nestjs/microservices'
-import { NestExpressApplication } from '@nestjs/platform-express';
+import { NestExpressApplication } from '@nestjs/platform-express'
 
 async function bootstrap() {
     initializeFfmpeg()

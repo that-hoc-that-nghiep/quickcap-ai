@@ -15,7 +15,6 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager'
 import { Cache } from 'cache-manager'
 import { createHash } from 'crypto'
 import * as path from 'path'
-import { FfmpegService } from 'src/ffmpeg/ffmpeg.service'
 import { TranscribeReq } from './dto/transcribe-req'
 import {
     WorkerThreadsService,
@@ -35,7 +34,6 @@ export class VideoService {
     constructor(
         @Inject(CACHE_MANAGER) private cacheManager: Cache,
         private readonly aiService: AiService,
-        private readonly ffmpegService: FfmpegService,
         private readonly workerThreadsService: WorkerThreadsService,
         private readonly configService: ConfigService<typeof Env, true>
     ) {}
