@@ -43,7 +43,7 @@ export class VideoService {
         return `${prefix}_${hash}`
     }
 
-    async generateTranscribe(transcribeReq: TranscribeReq): Promise<TranscribeRes> {
+    async generateTranscribe(transcribeReq: TranscribeReq) {
         const cacheKey = this.generateCacheKey('transcribe', transcribeReq)
 
         // Try to get from cache
@@ -95,25 +95,60 @@ export class VideoService {
 
             const document = await whisperLoader.load()
 
-            const transcription = document[0].pageContent
+            const transcript = document[0].pageContent
 
-            // Ensure we have a valid string transcription
-            if (typeof transcription !== 'string') {
-                throw new InternalServerErrorException('Failed to generate valid transcription')
+            // Ensure we have a valid string transcript
+            if (typeof transcript !== 'string') {
+                throw new InternalServerErrorException('Failed to generate valid transcript')
             }
 
-            this.logger.log(`Generated transcript: ${transcription}`)
+            this.logger.log(`Generated transcript: ${transcript}`)
+
+            const transcriptNSFWDetectSchema = z
+                .object({
+                    isNSFW: z
+                        .optional(z.boolean())
+                        .describe('Set to true if the transcript contains NSFW content, false otherwise.')
+                })
+                .describe('The response from the AI model for detect NSFW content from video transcript')
+
+            const parser = StructuredOutputParser.fromZodSchema(transcriptNSFWDetectSchema)
+
+            const prompt = ChatPromptTemplate.fromMessages([
+                [
+                    'system',
+                    `
+                    You are an content moderation AI that helps platforms detect NSFW content in video transcripts.
+
+                    Based on the video transcript, analyze the content and determine if it contains NSFW material.
+
+                    Wrap the output in \`json\` tags\n{format_instructions}`
+                ],
+                ['user', '{transcript}']
+            ])
+
+            const partialedPrompt = await prompt.partial({
+                format_instructions: parser.getFormatInstructions()
+            })
+
+            const llm = this.aiService.getLLM()
+
+            const chain = partialedPrompt.pipe(llm).pipe(parser)
+
+            const res = await chain.invoke({
+                transcript
+            })
+
+            const result = { transcript: transcript, isNSFW: res.isNSFW }
 
             // Store result in cache
-            await this.cacheManager.set(cacheKey, transcription, DEFAULT_CACHE_TTL)
+            await this.cacheManager.set(cacheKey, result, DEFAULT_CACHE_TTL)
 
             // Cleanup temporary file
             await this.cleanupTempVideoFiles(tempVideoPath)
             await this.cleanupTempAudioFiles(tempAudioPath)
 
-            return {
-                transcript: transcription
-            }
+            return result
         } catch (error) {
             this.logger.error(`Error generate transcript: ${error.message}`)
             throw new InternalServerErrorException(`Failed to process generate transcript: ${error.message}`)
