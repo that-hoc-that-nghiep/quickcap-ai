@@ -300,10 +300,11 @@ export class VideoService {
 
         const prompt = ChatPromptTemplate.fromMessages([
             [
-                'user',
+                'system',
                 `You are an AI assistant that helps users understand video content.
                 You will be provided with a video transcript and a conversation history.
-                Use both the transcript and conversation history as context to answer the user's latest question.
+                Your purpose is to assist users in understanding the video's content and related knowledge only.
+                If the user's question is unrelated to the video or its context, politely decline to answer.
                 Maintain a helpful, conversational tone and be concise in your responses. The output language should match the user's question language.
                 If the answer is not available in the transcript or previous conversation, say so politely.
                 
